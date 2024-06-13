@@ -24,11 +24,11 @@ class GLibBase(Tarball, Meson):
         Meson.__init__(
             self,
             "glib-base",
-            version="2.80.2",
+            version="2.80.3",
             lastversion_even=True,
             repository="https://gitlab.gnome.org/GNOME/glib",
             archive_url="https://download.gnome.org/sources/glib/{major}.{minor}/glib-{version}.tar.xz",
-            hash="b9cfb6f7a5bd5b31238fd5d56df226b2dda5ea37611475bf89f6a0f9400fe8bd",
+            hash="3947a0eaddd0f3613d0230bb246d0c69e46142c19022f5c4b1b2e3cba236d417",
             dependencies=[
                 "ninja",
                 "meson",
@@ -40,8 +40,10 @@ class GLibBase(Tarball, Meson):
             ],
             patches=[
                 "001-glib-package-installation-directory.patch",
-                # https://gitlab.gnome.org/GNOME/gobject-introspection/-/issues/499
-                "002-gir-scanner-dll-not-found.patch",
+                # https://gitlab.gnome.org/GNOME/gobject-introspection/-/issues/509
+                # https://gitlab.gnome.org/GNOME/gobject-introspection/-/merge_requests/458
+                "002-fix-introspection.patch",
+                "003-fix-g_content_type_get_icon-missing.patch",
             ],
         )
         self.add_param("-Dman-pages=disabled")
@@ -60,17 +62,19 @@ class GLib(Tarball, Meson):
         Meson.__init__(
             self,
             "glib",
-            version="2.80.2",
+            version="2.80.3",
             lastversion_even=True,
             repository="https://gitlab.gnome.org/GNOME/glib",
             archive_url="https://download.gnome.org/sources/glib/{major}.{minor}/glib-{version}.tar.xz",
-            hash="b9cfb6f7a5bd5b31238fd5d56df226b2dda5ea37611475bf89f6a0f9400fe8bd",
+            hash="3947a0eaddd0f3613d0230bb246d0c69e46142c19022f5c4b1b2e3cba236d417",
             dependencies=["glib-base"],
             patches=[
                 "001-glib-package-installation-directory.patch",
-                # https://gitlab.gnome.org/GNOME/gobject-introspection/-/issues/499
-                "002-gir-scanner-dll-not-found.patch",
-            ],
+                # https://gitlab.gnome.org/GNOME/gobject-introspection/-/issues/509
+                # https://gitlab.gnome.org/GNOME/gobject-introspection/-/merge_requests/458
+                "002-fix-introspection.patch",
+                "003-fix-g_content_type_get_icon-missing.patch",
+                ],
         )
         self.add_param("-Dman-pages=disabled")
         self.add_param("-Dtests=false")
