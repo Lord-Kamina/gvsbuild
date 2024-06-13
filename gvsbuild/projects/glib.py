@@ -40,8 +40,10 @@ class GLibBase(Tarball, Meson):
             ],
             patches=[
                 "001-glib-package-installation-directory.patch",
-                # https://gitlab.gnome.org/GNOME/gobject-introspection/-/issues/499
-                "002-gir-scanner-dll-not-found.patch",
+                # https://gitlab.gnome.org/GNOME/gobject-introspection/-/issues/509
+                # https://gitlab.gnome.org/GNOME/gobject-introspection/-/merge_requests/458
+                "002-fix-introspection.patch",
+                "003-fix-g_content_type_get_icon-missing.patch",
             ],
         )
         self.add_param("-Dman-pages=disabled")
@@ -68,9 +70,11 @@ class GLib(Tarball, Meson):
             dependencies=["glib-base"],
             patches=[
                 "001-glib-package-installation-directory.patch",
-                # https://gitlab.gnome.org/GNOME/gobject-introspection/-/issues/499
-                "002-gir-scanner-dll-not-found.patch",
-            ],
+                # https://gitlab.gnome.org/GNOME/gobject-introspection/-/issues/509
+                # https://gitlab.gnome.org/GNOME/gobject-introspection/-/merge_requests/458
+                "002-fix-introspection.patch",
+                "003-fix-g_content_type_get_icon-missing.patch",
+                ],
         )
         self.add_param("-Dman-pages=disabled")
         self.add_param("-Dtests=false")

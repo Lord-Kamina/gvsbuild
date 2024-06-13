@@ -1,0 +1,191 @@
+From ef73ce4f7fef7defc52b0d23d1d573912f4dc5f8 Mon Sep 17 00:00:00 2001
+From: Chun-wei Fan <fanchunwei@src.gnome.org>
+Date: Thu, 28 Mar 2024 18:36:41 +0800
+Subject: [PATCH] Introspection: Fix running g-ir-scanner 1.80.x+ on Windows
+
+Since we are now building introspection files for GLib while building
+GLib, so we want to make sure that we indeed load the freshly-built
+DLLs when running g-ir-scanner, so we add the various needed subdirs
+(and if needed, subprojects), to set the GI_EXTRA_BASE_DLL_DIRS
+envvar so that g-ir-scanner will look for the newly-built GLib DLLs.
+
+Ideally, upstream g-ir-scanner will need to be updated accordingly to do
+something similar to what we are doing here, but this is needed until
+the time that we require a g-ir-scanner that contains the update.
+
+This will also fix the g-ir-scanner erroring out when there is no
+pre-existing GLib on the system, as the needed DLLs are now found.
+
+Related issue: https://gitlab.gnome.org/GNOME/gobject-introspection/-/issues/499
+Related MR in G-I:
+https://gitlab.gnome.org/GNOME/gobject-introspection/-/merge_requests/458
+---
+ girepository/introspection/meson.build | 31 ++++++++++++
+ meson.build                            | 11 +++--
+ tools/grab-gio-dll-paths.py            | 68 ++++++++++++++++++++++++++
+ 3 files changed, 107 insertions(+), 3 deletions(-)
+ create mode 100644 tools/grab-gio-dll-paths.py
+
+diff --git a/girepository/introspection/meson.build b/girepository/introspection/meson.build
+index 9e2d0f2bb..dacb9aef0 100644
+--- a/girepository/introspection/meson.build
++++ b/girepository/introspection/meson.build
+@@ -14,6 +14,30 @@ if 'address' in glib_sanitizers
+     'ASAN_OPTIONS', 'verify_asan_link_order=0', separator: ',')
+ endif
+ 
++if host_system == 'windows'
++  # Use gio-2.0-uninstalled.pc to find the paths where the GLib DLLs (and their dependent non-system
++  # DLLs that are built as subprojects) are located
++  check_built_dll_paths_cmd = [get_dll_paths_script, '--build-path=@0@'.format(meson.project_build_root())]
++  meson_pkgconfig_paths = get_option('pkg_config_path')
++  if meson_pkgconfig_paths.length() > 0
++    check_built_dll_paths_cmd += '--pkg-config-path=@0@'.format(''.join(meson_pkgconfig_paths))
++  endif
++  check_built_dll_paths = run_command(
++    check_built_dll_paths_cmd,
++	capture: true,
++    check: true,
++  )
++  # hmm, no os.pathsep in Meson to make this more portable, if needed?
++  gi_scanner_dll_paths = check_built_dll_paths.stdout().strip().split(';')
++
++  # Also assume the existing paths in %PATH% to be considered for DLLs
++  message('Ensure that all of GLib\'s dependent non-system DLLs that are not built')
++  message('alongside with GLib can be found in paths in %PATH%')
++  message('Check this if building .gir files fail due to \'ImportError: DLL load failed while importing _giscanner\'')
++
++  gi_gen_env_variables.set('GI_EXTRA_BASE_DLL_DIRS', gi_scanner_dll_paths)
++endif
++
+ # GLib
+ glib_gir_sources = [
+   gi_gen_shared_sources,
+@@ -314,6 +338,12 @@ libgirepository_gir_args = [
+   '--identifier-prefix=GI',
+ ]
+ 
++gi_libgirepository_gen_env_variables = environment()
++
++if host_system == 'windows'
++  gi_libgirepository_gen_env_variables.set('GI_EXTRA_BASE_DLL_DIRS', gi_scanner_dll_paths)
++endif
++
+ girepository_gir = gnome.generate_gir(libgirepository,
+   sources: libgirepository_gir_sources,
+   namespace: 'GIRepository',
+@@ -327,5 +357,6 @@ girepository_gir = gnome.generate_gir(libgirepository,
+   install_dir_gir: glib_girdir,
+   dependencies: [ libglib_dep, libgobject_dep, libgmodule_dep, libgio_dep ],
+   extra_args: gir_args + libgirepository_gir_args,
++  env: gi_libgirepository_gen_env_variables,
+ )
+ 
+diff --git a/meson.build b/meson.build
+index aad78f574..7cdca05b5 100644
+--- a/meson.build
++++ b/meson.build
+@@ -236,8 +236,16 @@ if host_system == 'qnx'
+   add_project_arguments('-D_QNX_SOURCE', language: 'c')
+ endif
+ 
++# dummy/empty dependency() object to declare fallbacks and simpler dependencies
++not_found = dependency('', required: false)
++
++get_dll_paths_script = not_found
++
+ if host_system == 'windows'
+   add_project_arguments(['-DUNICODE', '-D_UNICODE'], language: 'c')
++
++  # Script to obtain paths where the DLLs that we will reside for g-ir-scanner
++  get_dll_paths_script = find_program('tools/grab-gio-dll-paths.py', native: true)
+ endif
+ 
+ # Disable strict aliasing;
+@@ -246,9 +254,6 @@ if cc.has_argument('-fno-strict-aliasing')
+   add_project_arguments('-fno-strict-aliasing', language: 'c')
+ endif
+ 
+-# dummy/empty dependency() object to declare fallbacks and simpler dependencies
+-not_found = dependency('', required: false)
+-
+ ########################
+ # Configuration begins #
+ ########################
+diff --git a/tools/grab-gio-dll-paths.py b/tools/grab-gio-dll-paths.py
+new file mode 100644
+index 000000000..4b225f740
+--- /dev/null
++++ b/tools/grab-gio-dll-paths.py
+@@ -0,0 +1,68 @@
++#!/usr/bin/env python3
++#
++# Copyright © 2024 Chun-wei Fan.
++#
++# SPDX-License-Identifier: LGPL-2.1-or-later
++#
++# Original author: Chun-wei Fan <fanc999@yahoo.com.tw>
++
++"""
++This script runs pkg-config against the uninstalled pkg-config files to obtain the
++paths where the newly-built GLib and subproject DLLs reside
++"""
++
++import argparse
++import os
++import subprocess
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--build-path", required=True, help="Root build directory")
++    parser.add_argument(
++        "--pkg-config", help="pkg-config or compatible executable", default="pkg-config"
++    )
++    parser.add_argument(
++        "--pkg-config-path",
++        help="Additional paths to look for pkg-config .pc files",
++    )
++    args = parser.parse_args()
++    build_path = args.build_path
++    uninstalled_pc_path = os.path.join(build_path, "meson-uninstalled")
++    if not os.path.isdir(uninstalled_pc_path):
++        raise ValueError("%s is not a valid build path" % build_path)
++
++    additional_pkg_config_paths = [uninstalled_pc_path]
++    if args.pkg_config_path is not None:
++        additional_pkg_config_paths += args.pkg_config_path.split(os.pathsep)
++
++    if "PKG_CONFIG_PATH" in os.environ:
++        additional_pkg_config_paths += os.environ["PKG_CONFIG_PATH"].split(os.pathsep)
++
++    os.environ["PKG_CONFIG_PATH"] = os.pathsep.join(additional_pkg_config_paths)
++
++    # The _giscanner Python module depends on GIO, so use gio-2.0-uninstalled.pc
++    pkg_config_result = subprocess.run(
++        [args.pkg_config, "--libs-only-L", "gio-2.0"],
++        capture_output=True,
++        text=True,
++        check=True,
++    )
++    lib_args = pkg_config_result.stdout.split()
++    libpaths = []
++    for arg in lib_args:
++        # Get rid of the "-L" prefix in the library paths
++        if arg[2:] not in libpaths:
++            libpaths.append(arg[2:])
++
++    # Now append the paths in %PATH%, if the paths exist
++    paths = os.environ["PATH"].split(os.pathsep)
++    for path in paths:
++        if os.path.isdir(path):
++            libpaths.append(path)
++
++    print(os.pathsep.join(libpaths).rstrip())
++
++
++if __name__ == "__main__":
++    main()
+-- 
+2.37.1 (Apple Git-137.1)
+
