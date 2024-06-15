@@ -26,9 +26,9 @@ class Pycairo(Tarball, Meson):
         Meson.__init__(
             self,
             "pycairo",
-            version="1.26.0",
+            version="1.22.0",
             archive_url="https://github.com/pygobject/pycairo/releases/download/v{version}/pycairo-{version}.tar.gz",
-            hash="2dddd0a874fbddb21e14acd9b955881ee1dc6e63b9c549a192d613a907f9cbeb",
+            hash="b34517abdf619d4c7f0274f012b398d9b03bab7adc3efd2912bf36be3f911f3f",
             dependencies=["cairo"],
         )
 
